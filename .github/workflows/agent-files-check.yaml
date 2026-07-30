@@ -1,7 +1,7 @@
 name: Validate PR - Agent Configuration
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Check for vendor-specific directories
         run: |
@@ -50,10 +52,11 @@ jobs:
       - name: Check out code
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
       - name: Fetch comparison refs
-        run: git fetch --depth=1 origin "${BASE_REF}" "${HEAD_REF}"
+        run: git fetch origin "${BASE_REF}" "${HEAD_REF}" 2>/dev/null || true
 
       - name: Check for protected file changes
         id: check
