@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   issues: write
+  pull-requests: write
 
 env:
   REVIEW_LABEL: agent-config-review-required
