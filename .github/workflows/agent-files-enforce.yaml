@@ -50,7 +50,7 @@ jobs:
     needs: resolve-pr
     runs-on: ubuntu-latest
     permissions:
-      actions: read
+      actions: write
       issues: write
     outputs:
       protected_changed: ${{ steps.read-result.outputs.protected_changed }}
