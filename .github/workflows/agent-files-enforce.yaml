@@ -140,7 +140,7 @@ jobs:
 
   enforce-label-removal:
     name: Enforce CODEOWNERS-only label removal
-    if: github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == env.REVIEW_LABEL
+    if: github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'agent-config-review-required'
     runs-on: ubuntu-latest
     permissions:
       issues: write
