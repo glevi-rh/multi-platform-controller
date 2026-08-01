@@ -61,11 +61,14 @@ jobs:
           name: agent-check-result
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: /tmp/detect-result
 
       - name: Read detection result
         id: read-result
         run: |
-          RESULT=$(cat agent-check-result.txt)
+          ls -la /tmp/detect-result/
+          RESULT=$(tr -d '[:space:]' < /tmp/detect-result/agent-check-result.txt)
+          echo "Detection result: '${RESULT}'"
           echo "protected_changed=${RESULT}" >> "${GITHUB_OUTPUT}"
 
       - name: Delete detection artifact
@@ -247,6 +250,28 @@ jobs:
               return;
             }
 
+            // Fail-closed: if label management job didn't succeed, block the PR
+            if (context.eventName === 'workflow_run') {
+              const labelJobResult = '${{ needs.label-protected-changes.result }}';
+              if (labelJobResult !== 'success') {
+                const pr = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: prNumber,
+                });
+                await github.rest.repos.createCommitStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  sha: pr.data.head.sha,
+                  state: 'failure',
+                  context: statusContext,
+                  description: `Label management did not succeed (${labelJobResult}). Blocking PR.`,
+                });
+                core.setFailed(`Label management job did not succeed (${labelJobResult}). Blocking the PR.`);
+                return;
+              }
+            }
+
             const pr = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -271,6 +296,16 @@ jobs:
               core.setFailed(
                 `PR has '${label}' label. An infra-team reviewer must review the agent config changes and remove this label before merging.`
               );
+            } else if (context.eventName === 'workflow_run' && '${{ needs.label-protected-changes.outputs.protected_changed }}' === 'true') {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: pr.data.head.sha,
+                state: 'failure',
+                context: statusContext,
+                description: 'Protected changes detected but label was not applied. Blocking PR.',
+              });
+              core.setFailed('Protected agent file changes were detected but the review label could not be applied. Blocking the PR.');
             } else {
               await github.rest.repos.createCommitStatus({
                 owner: context.repo.owner,
