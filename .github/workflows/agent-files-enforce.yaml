@@ -7,9 +7,7 @@ on:
   pull_request_target:
     types: [labeled, unlabeled]
 
-permissions:
-  issues: write
-  pull-requests: write
+permissions: {}
 
 env:
   REVIEW_LABEL: agent-config-review-required
@@ -19,6 +17,8 @@ jobs:
     name: Resolve PR number
     if: github.event_name == 'workflow_run'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
     outputs:
       pr_number: ${{ steps.resolve.outputs.pr_number }}
     steps:
@@ -49,6 +49,9 @@ jobs:
     if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
     needs: resolve-pr
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      issues: write
     outputs:
       protected_changed: ${{ steps.read-result.outputs.protected_changed }}
     steps:
@@ -139,6 +142,8 @@ jobs:
     name: Enforce CODEOWNERS-only label removal
     if: github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == env.REVIEW_LABEL
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
     steps:
       - name: Verify team membership before allowing label removal
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
@@ -179,6 +184,10 @@ jobs:
   block-on-label:
     name: Block PR if review label is present
     if: always()
+    permissions:
+      statuses: write
+      pull-requests: read
+      issues: read
     needs: [label-protected-changes, enforce-label-removal]
     runs-on: ubuntu-latest
     steps:
@@ -208,13 +217,7 @@ jobs:
               core.setOutput('number', context.issue.number.toString());
             }
 
-      - name: Fail-closed on detect workflow failure
-        if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion != 'success'
-        run: |
-          echo "::error::The detect workflow did not succeed (conclusion: ${{ github.event.workflow_run.conclusion }}). Blocking the PR until it passes."
-          exit 1
-
-      - name: Check label and block
+      - name: Evaluate policy and post commit status
         if: steps.pr.outputs.number
         env:
           PR_NUMBER: ${{ steps.pr.outputs.number }}
@@ -223,14 +226,58 @@ jobs:
           script: |
             const label = process.env.REVIEW_LABEL;
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
+            const statusContext = 'Agent File Policy';
+
+            // Fail-closed: if detect workflow didn't succeed, block the PR
+            if (context.eventName === 'workflow_run' && context.payload.workflow_run.conclusion !== 'success') {
+              const pr = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              });
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: pr.data.head.sha,
+                state: 'failure',
+                context: statusContext,
+                description: `Detect workflow did not succeed (${context.payload.workflow_run.conclusion}). Blocking PR.`,
+              });
+              core.setFailed('Detect workflow did not succeed. Blocking the PR until it passes.');
+              return;
+            }
+
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
             const labels = await github.rest.issues.listLabelsOnIssue({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: prNumber,
             });
             const hasLabel = labels.data.some(l => l.name === label);
+
             if (hasLabel) {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: pr.data.head.sha,
+                state: 'failure',
+                context: statusContext,
+                description: `PR has '${label}' label — infra-team review required.`,
+              });
               core.setFailed(
                 `PR has '${label}' label. An infra-team reviewer must review the agent config changes and remove this label before merging.`
               );
+            } else {
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: pr.data.head.sha,
+                state: 'success',
+                context: statusContext,
+                description: 'No agent config review required.',
+              });
             }
