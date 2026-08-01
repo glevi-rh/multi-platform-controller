@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
-      issues: write
+      pull-requests: write
     outputs:
       protected_changed: ${{ steps.read-result.outputs.protected_changed }}
     steps:
@@ -146,7 +146,7 @@ jobs:
     if: github.event_name == 'pull_request_target' && github.event.action == 'unlabeled' && github.event.label.name == 'agent-config-review-required'
     runs-on: ubuntu-latest
     permissions:
-      issues: write
+      pull-requests: write
     steps:
       - name: Verify team membership before allowing label removal
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
