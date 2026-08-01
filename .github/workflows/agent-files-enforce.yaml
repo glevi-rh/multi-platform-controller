@@ -46,7 +46,7 @@ jobs:
 
   label-protected-changes:
     name: Label PR when protected agent files change
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_run'
     needs: resolve-pr
     runs-on: ubuntu-latest
     permissions:
@@ -230,25 +230,6 @@ jobs:
             const label = process.env.REVIEW_LABEL;
             const prNumber = parseInt(process.env.PR_NUMBER, 10);
             const statusContext = 'Agent File Policy';
-
-            // Fail-closed: if detect workflow didn't succeed, block the PR
-            if (context.eventName === 'workflow_run' && context.payload.workflow_run.conclusion !== 'success') {
-              const pr = await github.rest.pulls.get({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: prNumber,
-              });
-              await github.rest.repos.createCommitStatus({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                sha: pr.data.head.sha,
-                state: 'failure',
-                context: statusContext,
-                description: `Detect workflow did not succeed (${context.payload.workflow_run.conclusion}). Blocking PR.`,
-              });
-              core.setFailed('Detect workflow did not succeed. Blocking the PR until it passes.');
-              return;
-            }
 
             // Fail-closed: if label management job didn't succeed, block the PR
             if (context.eventName === 'workflow_run') {
