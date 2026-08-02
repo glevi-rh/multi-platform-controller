@@ -239,7 +239,7 @@ jobs:
       statuses: write
       pull-requests: read
       issues: read
-    needs: [label-protected-changes, enforce-label-removal]
+    needs: [resolve-pr, label-protected-changes, enforce-label-removal]
     runs-on: ubuntu-latest
     steps:
       - name: Determine PR number
