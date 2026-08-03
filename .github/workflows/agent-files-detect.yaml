@@ -66,23 +66,38 @@ jobs:
           BASE_SHA: ${{ github.event.action == 'synchronize' && github.event.before || github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.action == 'synchronize' && github.event.after || github.event.pull_request.head.sha }}
         run: |
-          PROTECTED_PATHS="AGENTS.md CLAUDE.md GEMINI.md skills/ .github/workflows/agent-files-detect.yaml .github/workflows/agent-files-enforce.yaml"
+          PROTECTED_NAMES="AGENTS.md CLAUDE.md GEMINI.md"
+          PROTECTED_DIRS="skills"
+          PROTECTED_EXACT=".github/workflows/agent-files-detect.yaml .github/workflows/agent-files-enforce.yaml"
           PROTECTED_CHANGED=""
 
-          for pattern in ${PROTECTED_PATHS}; do
-            DIRECT=$(git diff --no-ext-diff --name-only "${BASE_SHA}..${HEAD_SHA}" -- "${pattern}")
+          ALL_CHANGED=$(git diff --no-ext-diff --name-only "${BASE_SHA}..${HEAD_SHA}")
+
+          for name in ${PROTECTED_NAMES}; do
+            MATCHES=$(echo "${ALL_CHANGED}" | grep -E "(^|/)${name}$" || true)
+            if [ -n "${MATCHES}" ]; then
+              PROTECTED_CHANGED="${PROTECTED_CHANGED}\n${MATCHES}"
+            fi
+          done
+
+          for dir in ${PROTECTED_DIRS}; do
+            MATCHES=$(echo "${ALL_CHANGED}" | grep -E "(^|/)${dir}/" || true)
+            if [ -n "${MATCHES}" ]; then
+              PROTECTED_CHANGED="${PROTECTED_CHANGED}\n${MATCHES}"
+            fi
+          done
+
+          for path in ${PROTECTED_EXACT}; do
+            DIRECT=$(echo "${ALL_CHANGED}" | grep -F "${path}" || true)
             if [ -n "${DIRECT}" ]; then
               PROTECTED_CHANGED="${PROTECTED_CHANGED}\n${DIRECT}"
             fi
           done
 
-          for path in ${PROTECTED_PATHS}; do
-            CLEAN_PATH="${path%/}"
-            ESCAPED_PATH=$(printf '%s' "${CLEAN_PATH}" | sed 's/[.[\^$*+?()|{}]/\\&/g')
-            if git diff --no-ext-diff "${BASE_SHA}..${HEAD_SHA}" | grep -qE "(>>?[[:space:]]*['\"]?${ESCAPED_PATH}|cp[[:space:]]+.*${ESCAPED_PATH}|mv[[:space:]]+.*${ESCAPED_PATH}|tee[[:space:]]+.*${ESCAPED_PATH}|sed[[:space:]]+.*-i.*${ESCAPED_PATH})"; then
-              PROTECTED_CHANGED="${PROTECTED_CHANGED}\nIndirect write to ${CLEAN_PATH} detected in diff"
-            fi
-          done
+          SUSPECT=$(git diff --no-ext-diff "${BASE_SHA}..${HEAD_SHA}" | grep -inE 'AGENTS\.md|CLAUDE\.md|GEMINI\.md|\.claude|\.cursor|\.agents|skills/' || true)
+          if [ -n "${SUSPECT}" ]; then
+            PROTECTED_CHANGED="${PROTECTED_CHANGED}\nReference to protected path found in diff"
+          fi
 
           if [ -n "${PROTECTED_CHANGED}" ]; then
             echo "protected_changed=true" >> "${GITHUB_OUTPUT}"
