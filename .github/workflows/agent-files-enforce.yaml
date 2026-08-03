@@ -324,6 +324,19 @@ jobs:
               repo: context.repo.repo,
               pull_number: prNumber,
             });
+
+            // Guard against stale evaluation: if the PR head has moved since the
+            // detect workflow ran, skip — the newer push's enforce run will post
+            // the correct status.
+            if (context.eventName === 'workflow_run') {
+              const evalPrs = context.payload.workflow_run.pull_requests || [];
+              const evaluatedSha = evalPrs.length > 0 ? evalPrs[0].head.sha : null;
+              if (evaluatedSha && evaluatedSha !== pr.data.head.sha) {
+                core.info(`PR head moved (${evaluatedSha} → ${pr.data.head.sha}) — skipping, newer run will evaluate.`);
+                return;
+              }
+            }
+
             const labels = await github.rest.issues.listLabelsOnIssue({
               owner: context.repo.owner,
               repo: context.repo.repo,
