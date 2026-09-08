@@ -38,11 +38,13 @@ jobs:
               state: 'open',
               head: `${run.head_repository.owner.login}:${run.head_branch}`,
             });
-            if (prs.length === 0) {
-              core.setFailed('Could not resolve PR number from workflow run.');
+            // Filter by head SHA to avoid mislabeling when multiple PRs exist from same branch
+            const matching = prs.filter(pr => pr.head.sha === run.head_sha);
+            if (matching.length !== 1) {
+              core.setFailed(`Found ${matching.length} PRs matching workflow run head SHA - cannot determine correct PR.`);
               return;
             }
-            core.setOutput('pr_number', prs[0].number.toString());
+            core.setOutput('pr_number', matching[0].number.toString());
 
   label-protected-changes:
     name: Label PR when protected agent files change
@@ -87,7 +89,7 @@ jobs:
       # unsigned/human commit onto a bot PR to ride the skip.
       - name: Check for trusted bot author
         id: bot-check
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
         with:
@@ -131,7 +133,7 @@ jobs:
       # a different commit than what the artifact describes).
       - name: Verify artifact freshness
         id: freshness-check
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           PR_NUMBER: ${{ needs.resolve-pr.outputs.pr_number }}
           WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
@@ -268,30 +270,11 @@ jobs:
                 });
               } catch (e) {
                 if (e.status === 404) {
-                  try {
-                    await github.rest.issues.createLabel({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo,
-                      name: label,
-                      color: 'e11d48',
-                      description: 'PR modifies protected agent config files — requires CODEOWNERS review',
-                    });
-                  } catch (createErr) {
-                    if (createErr.status !== 422) {
-                      core.setFailed(`Failed to create label '${label}': ${createErr.message}`);
-                      return;
-                    }
-                  }
-                  await github.rest.issues.addLabels({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    issue_number: prNumber,
-                    labels: [label],
-                  });
+                  core.setFailed(`Label '${label}' does not exist in this repository. Please create it manually with color e11d48 and description: "PR modifies protected agent config files — requires CODEOWNERS review"`);
                 } else {
                   core.setFailed(`Failed to add label '${label}': ${e.message}`);
-                  return;
                 }
+                return;
               }
             }
 
