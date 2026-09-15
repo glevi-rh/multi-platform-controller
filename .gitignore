@@ -47,6 +47,6 @@ test-report.json
 
 # Agent security
 .claude
-.cursor
+!.cursor
 .agents
 .vscode
